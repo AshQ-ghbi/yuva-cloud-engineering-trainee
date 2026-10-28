@@ -1,0 +1,30 @@
+graph TD
+    User([End Users / Web & Mobile]) --> R53[Route 53 DNS]
+    R53 --> CF[AWS CloudFront CDN + AWS WAF]
+    CF --> ALB[Internet-Facing Application Load Balancer]
+    
+    subgraph VPC["Custom VPC: 10.0.0.0/16 (ap-south-1)"]
+        subgraph PublicSubnets["Public Subnets (AZ-1a & AZ-1b)"]
+            ALB
+            NAT1[NAT Gateway AZ-1a]
+            NAT2[NAT Gateway AZ-1b]
+        end
+
+        subgraph PrivateAppSubnets["Private Application Subnets (AZ-1a & AZ-1b)"]
+            ASG[Auto Scaling Group: EC2 / ECS App Cluster]
+        end
+
+        subgraph PrivateDataSubnets["Private Isolated Database Subnets (AZ-1a & AZ-1b)"]
+            AuroraPrimary[(Aurora PostgreSQL Primary - 1a)]
+            AuroraReplica[(Aurora PostgreSQL Replica - 1b)]
+            Redis[(Amazon ElastiCache Redis Cluster)]
+        end
+    end
+
+    ALB -->|Forward Port 80/443| ASG
+    ASG -->|Session & Cart Reads/Writes| Redis
+    ASG -->|Read / Write SQL| AuroraPrimary
+    ASG -->|Read-Only SQL Queries| AuroraReplica
+    AuroraPrimary -.->|Synchronous Replication| AuroraReplica
+    ASG -->|Static Media / Product Images| S3[(Amazon S3 Bucket)]
+    CF -->|Origin Fetch for Static Media| S3
